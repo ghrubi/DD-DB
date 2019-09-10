@@ -1,0 +1,944 @@
+// Function FindReceiptID
+DROP function IF EXISTS FindReceiptID;
+DELIMITER $$
+
+CREATE FUNCTION FindReceiptID(checkNum INT,  checkTime DATETIME) RETURNS INT
+  DETERMINISTIC
+BEGIN
+  DECLARE receipt_id INT;
+
+  SELECT id INTO receipt_id
+  FROM receipt
+  WHERE check_num=checkNum and check_time=checkTime;
+
+  RETURN(receipt_id);
+END $$
+DELIMITER ;
+
+
+// Procedure NewReceipt
+show procedure status;
+DROP procedure IF EXISTS NewReceipt;
+DELIMITER $$
+
+CREATE PROCEDURE NewReceipt(IN checkNum INT, IN checkTime DATETIME, IN custName VARCHAR(25), IN netSale DECIMAL(15,2), IN salesTax DECIMAL(15,2), IN orderType VARCHAR(25), OUT returnStatus BOOLEAN)
+BEGIN
+  DECLARE existingReceiptID INT DEFAULT 0;
+
+  # Does this receipt already exist?
+  SELECT FindReceiptID(checkNum, checkTime) INTO existingReceiptID;
+
+  # Set return status.
+  SET returnStatus = TRUE;
+  # If receipt isn't found.
+  IF existingReceiptID IS NULL THEN
+#select 'Receipt Not Found';
+     INSERT INTO receipt(check_num, check_time, cust_name, net_sale, sales_tax, order_type) VALUES(checkNum, checkTime, custName, netSale, salesTax, orderType);
+  ELSE
+#select 'Receipt Found';
+    SET returnStatus = FALSE;
+  END IF;
+
+END $$
+DELIMITER ;
+
+call NewReceipt('666', '2018-02-07 14:00:00', 'gene', '9.39', '0.68', 'To Go', @retVal);
+call NewReceipt('667', '2018-02-07 14:01:00', 'gene', '9.39', '0.68', 'To Go', @retVal);  
+call NewReceipt('668', '2018-02-07 14:02:00', 'gene', '9.39', '0.68', 'To Go', @retVal);  
+call NewReceipt('669', '2018-02-07 14:03:00', 'gene', '9.39', '0.68', 'To Go', @retVal);  
+call NewReceipt('670', '2018-02-07 14:04:00', 'eric', '9.39', '0.68', 'To Go', @retVal); 
+call NewReceipt('671', '2018-02-07 14:05:00', 'nate', '9.39', '0.68', 'To Go', @retVal); 
+
+// Procedure NewReceipt2
+DROP procedure IF EXISTS NewReceipt2;
+DELIMITER $$
+
+CREATE PROCEDURE NewReceipt2(IN checkNum INT, IN checkTime DATETIME, IN custName VARCHAR(25), IN netSale DECIMAL(15,2), IN salesTax DECIMAL(15,2), IN orderType VARCHAR(25), IN payType VARCHAR(25), OUT returnStatus BOOLEAN)
+BEGIN
+  DECLARE existingReceiptID INT DEFAULT 0;
+
+  # Does this receipt already exist?
+  SELECT FindReceiptID(checkNum, checkTime) INTO existingReceiptID;
+
+  # Set return status.
+  SET returnStatus = TRUE;
+  # If receipt isn't found.
+  IF existingReceiptID IS NULL THEN
+#select 'Receipt Not Found';
+     INSERT INTO receipt(check_num, check_time, cust_name, net_sale, sales_tax, order_type, pay_type) VALUES(checkNum, checkTime, custName, netSale, salesTax, orderType, payType);
+  ELSE
+#select 'Receipt Found';
+    SET returnStatus = FALSE;
+  END IF;
+
+END $$
+DELIMITER ;
+
+call NewReceipt2('666', '2019-07-23 14:05:00', 'nate', '9.39', '0.68', 'To Go', 'GrubHub', @retVal); 
+
+// Procedure UpdateReceipt.
+DROP procedure IF EXISTS UpdateReceipt;
+DELIMITER $$
+
+CREATE PROCEDURE UpdateReceipt(IN checkNum INT, IN checkTime DATETIME, IN custName VARCHAR(25), IN netSale DECIMAL(15,2), IN salesTax DECIMAL(15,2), IN orderType VARCHAR(25), IN payType VARCHAR(25), OUT returnStatus BOOLEAN)
+BEGIN
+  DECLARE existingReceiptID INT DEFAULT 0;
+
+  # Does this receipt already exist?
+  SELECT FindReceiptID(checkNum, checkTime) INTO existingReceiptID;
+
+  # Set return status.
+  SET returnStatus = TRUE;
+  # If receipt is found, delete receipt.
+  IF existingReceiptID IS NOT NULL THEN
+select 'Receipt Found For Update';
+      DELETE FROM receipt WHERE id=existingReceiptID;
+
+      #UPDATE receipt
+      #SET net_sale=netSale, sales_tax=salesTax 
+      #WHERE id=existingReceiptID;
+  #ELSE
+#select 'Receipt Not Found';
+  #  SET returnStatus = FALSE;
+  END IF;
+  
+  # Insert updated receipt.
+      INSERT INTO receipt(check_num, check_time, cust_name, net_sale, sales_tax, order_type, pay_type) VALUES(checkNum, checkTime, custName, netSale, salesTax, orderType, payType);
+
+END $$
+DELIMITER ;
+
+call UpdateReceipt('2711', '2019-07-26 12:10:00', 'MARILYN', '0.00', '0.00', 'To Go', 'Cash', @retVal); 
+call UpdateReceipt('2711', '2019-07-26 12:10:00', 'MARILYN', '5.59', '0.41', 'To Go', 'Cash', @retVal);
+call UpdateReceipt('2712', '2019-07-26 12:10:00', 'MARILYN', '0.00', '0.00', 'To Go', 'Cash', @retVal); 
+
+// Function FindOrderItemID
+DROP function IF EXISTS FindOrderItemID;
+DELIMITER $$
+
+CREATE FUNCTION FindOrderItemID(itemName VARCHAR(50), itemPrice DECIMAL(15,2)) RETURNS INT
+  DETERMINISTIC
+BEGIN
+  DECLARE order_item_id INT;
+
+  SELECT id INTO order_item_id
+  FROM order_item
+  WHERE name=itemName and price=itemPrice;
+
+  RETURN(order_item_id);
+END $$
+DELIMITER ;
+
+// Procedure AddOrderItem
+DROP procedure IF EXISTS AddOrderItem;
+DELIMITER $$
+
+CREATE PROCEDURE AddOrderItem(IN checkNum INT, IN checkTime DATETIME, IN itemName VARCHAR(50), IN itemPrice DECIMAL(15,2), IN itemQuantity INT)
+BEGIN
+  DECLARE receiptID INT DEFAULT 0;
+  DECLARE existingOrderItemID INT DEFAULT 0;
+
+  # Get the receiptID for insert into the order_listing table.
+  SELECT FindReceiptID(checkNum, checkTime) INTO receiptID;
+
+  # Does this order item already exist?
+  SELECT FindOrderItemID(itemName, itemPrice) INTO existingOrderItemID;
+
+  # If order item isn't found, add it to the order_item table.
+  IF existingOrderItemID IS NULL THEN
+#select 'Order Item Not Found';
+     INSERT INTO order_item(name, price) VALUES(itemName, itemPrice);
+
+     # Get new entry ID from INSERT. Set it to existingOrderItemID
+     SELECT last_insert_id() into existingOrderItemID;
+#  ELSE
+#select 'Order Item Found';
+  END IF;
+
+  # Now put order_item into order_listing table
+  INSERT INTO order_listing(receipt_id, order_item_id, order_item_quantity) VALUES(receiptID, existingOrderItemID, itemQuantity);
+
+END $$
+DELIMITER ;
+
+
+call AddOrderItem('666', '2018-02-07 14:00:00', 'M BBQ', '9.39');
+call AddOrderItem('666', '2018-02-07 14:00:00', 'W/HS', '0.00');
+call AddOrderItem('666', '2018-02-07 14:00:00', 'To Go', '0.00');
+call AddOrderItem('667', '2018-02-07 14:01:00', 'M BAC', '9.39');
+call AddOrderItem('667', '2018-02-07 14:01:00', 'W/H', '0.00');
+call AddOrderItem('667', '2018-02-07 14:01:00', 'To Go', '0.00');
+call AddOrderItem('668', '2018-02-07 14:02:00', 'M BBQ', '9.39');
+call AddOrderItem('668', '2018-02-07 14:02:00', 'W/H', '0.00');
+call AddOrderItem('668', '2018-02-07 14:02:00', 'M BAC', '9.39');
+call AddOrderItem('668', '2018-02-07 14:02:00', 'W/H', '0.00');
+call AddOrderItem('668', '2018-02-07 14:02:00', 'M CHZ', '8.69');
+call AddOrderItem('668', '2018-02-07 14:02:00', 'W/-', '0.00');
+call AddOrderItem('668', '2018-02-07 14:02:00', 'To Go', '0.00');
+call AddOrderItem('670', '2018-02-07 14:04:00', 'KG CHZ', '10.99');
+call AddOrderItem('670', '2018-02-07 14:04:00', '-/-', '0.00');
+call AddOrderItem('670', '2018-02-07 14:04:00', 'RANCH', '0.25');
+call AddOrderItem('670', '2018-02-07 14:04:00', 'To Go', '0.00');
+
+// Function FindDiscountItemID
+DROP function IF EXISTS FindDiscountItemID;
+DELIMITER $$
+
+CREATE FUNCTION FindDiscountItemID(itemName VARCHAR(50), itemPrice DECIMAL(15,2)) RETURNS INT
+  DETERMINISTIC
+BEGIN
+  DECLARE discount_item_id INT;
+
+  SELECT id INTO discount_item_id
+  FROM discount_item
+  WHERE name=itemName and price=itemPrice;
+
+  RETURN(discount_item_id);
+END $$
+DELIMITER ;
+
+// Procedure AddDiscountItem
+DROP procedure IF EXISTS AddDiscountItem;
+DELIMITER $$
+
+CREATE PROCEDURE AddDiscountItem(IN checkNum INT, IN checkTime DATETIME, IN itemName VARCHAR(50), IN itemPrice DECIMAL(15,2), IN itemQuantity INT)
+BEGIN
+  DECLARE receiptID INT DEFAULT 0;
+  DECLARE existingDiscountItemID INT DEFAULT 0;
+
+  # Get the receiptID for insert into the order_listing table.
+  SELECT FindReceiptID(checkNum, checkTime) INTO receiptID;
+
+  # Does this discount item already exist?
+  SELECT FindDiscountItemID(itemName, itemPrice) INTO existingDiscountItemID;
+
+  # If discount item isn't found, add it to the discount_item table.
+  IF existingDiscountItemID IS NULL THEN
+#select 'Discount Item Not Found';
+     INSERT INTO discount_item(name, price) VALUES(itemName, itemPrice);
+
+     # Get new entry ID from INSERT. Set it to existingDiscountItemID
+     SELECT last_insert_id() into existingDiscountItemID;
+#  ELSE
+#select 'Discount Item Found';
+  END IF;
+
+  # Now put order_item into order_listing table
+  INSERT INTO discount_listing(receipt_id, discount_item_id, discount_item_quantity) VALUES(receiptID, existingDiscountItemID, itemQuantity);
+
+END $$
+DELIMITER ;
+
+call AddDiscountItem('670', '2018-02-07 14:04:00', 'CH PR FC', '-9.39');
+call AddDiscountItem('670', '2018-02-07 14:04:00', 'CH CL FC', '-8.69');
+call AddDiscountItem('670', '2018-02-07 14:04:00', '$1 Off', '-1.00');
+
+// Procedure DelOrderDetails
+DROP procedure IF EXISTS DelOrderDetails;
+DELIMITER $$
+
+CREATE PROCEDURE DelOrderDetails(IN checkNum INT, IN checkTime DATETIME)
+BEGIN
+  DECLARE receiptID INT DEFAULT 0;
+
+  # Get the receiptID for order.
+  SELECT FindReceiptID(checkNum, checkTime) INTO receiptID;
+
+  # Delete order_listing and discount_listing entries for order
+  DELETE FROM order_listing WHERE receipt_id=receiptID;
+
+  DELETE FROM discount_listing WHERE receipt_id=receiptID;
+
+END $$
+DELIMITER ;
+
+call DelOrderDetails('1124', '2018-09-016 09:18:00');
+
+// Procedure GetSummary
+show procedure status;
+DROP procedure IF EXISTS GetSummary;
+DELIMITER $$
+
+CREATE PROCEDURE GetSummary(IN sumDate DATETIME, OUT netSales DECIMAL(15,2), OUT salesCount INT, OUT discounts DECIMAL(15,2), OUT oloSales DECIMAL(15,2), OUT oloCount INT, OUT laborPct DECIMAL(15,2))
+BEGIN
+  # For labor total from AskTimeClock
+  DECLARE laborTotal DECIMAL(15,2);
+
+  # Setup end time. Add 24hrs.
+  DECLARE sumDateEnd DATETIME;
+  SELECT DATE_ADD(sumDate, INTERVAL 1 DAY) INTO sumDateEnd;
+
+  # Get netSales and salesCount
+  SELECT count(*), sum(net_sale) INTO salesCount, netSales
+  FROM receipt
+  WHERE receipt.check_time>sumDate and receipt.check_time<sumDateEnd;
+
+  # Get discounts
+  SELECT sum(discount_item.price)*-1 INTO discounts
+  FROM discount_item, discount_listing, receipt 
+  WHERE discount_item.id=discount_listing.discount_item_id and receipt.id=discount_listing.receipt_id and receipt.check_time>sumDate and receipt.check_time<sumDateEnd;
+
+  # Get oloSales and oloCount
+  SELECT count(*), (sum(net_sale)+sum(sales_tax)) INTO oloCount, oloSales
+  FROM receipt 
+  WHERE receipt.check_time>sumDate and check_time<sumDateEnd and order_type='online';
+
+  # Get current labor dollars from time clock
+  SELECT sum(total) INTO laborTotal 
+  FROM AskTimeClock
+  WHERE clock_in>sumDate and clock_out<sumDateEnd;
+
+  # Defaults for return values if any are NULL
+  IF netSales IS NULL THEN
+    SET netSales = '0.00';
+  END IF;
+
+  IF salesCount IS NULL THEN
+    SET salesCount = 0;
+  END IF;
+
+  IF discounts IS NULL THEN
+    SET discounts = '0.00';
+  END IF;
+
+  IF oloSales IS NULL THEN
+    SET oloSales = '0.00';
+  END IF;
+
+  IF oloCount IS NULL THEN
+    SET oloCount = 0;
+  END IF;
+
+  IF laborTotal IS NULL THEN
+    SET laborPct = 0;
+  ELSE
+    SET laborPct = (laborTotal/netSales)*100;
+  END IF;
+
+END $$
+DELIMITER ;
+
+call GetSummary('2018-02-18', @netSales, @salesCount, @discounts, @oloSales, @oloCount, @laborPct);
+select @netSales, @salesCount, @discounts, @oloSales, @oloCount, @laborPct;
+call GetSummary('2018-02-19', @netSales, @salesCount, @discounts, @oloSales, @oloCount, @laborPct);
+select @netSales, @salesCount, @discounts, @oloSales, @oloCount, @laborPct;
+
+// Procedure GetSummaryRange
+DROP procedure IF EXISTS GetSummaryRange;
+DELIMITER $$
+
+CREATE PROCEDURE GetSummaryRange(IN beginDate DATETIME, IN endDate DATETIME, OUT netSales DECIMAL(15,2), OUT salesCount INT, OUT discounts DECIMAL(15,2), OUT oloSales DECIMAL(15,2), OUT oloCount INT, OUT laborPct DECIMAL(15,2))
+BEGIN
+  # For labor total from AskTimeClock
+  DECLARE laborTotal DECIMAL(15,2);
+
+  # Setup end time. Add 24hrs to endDate.
+  DECLARE endDateEnd DATETIME;
+  SELECT DATE_ADD(endDate, INTERVAL 1 DAY) INTO endDateEnd;
+
+  # Get netSales and salesCount
+  SELECT count(*), sum(net_sale) INTO salesCount, netSales
+  FROM receipt
+  WHERE receipt.check_time>beginDate and receipt.check_time<endDateEnd;
+
+  # Get discounts
+  SELECT sum(discount_item.price)*-1 INTO discounts
+  FROM discount_item, discount_listing, receipt 
+  WHERE discount_item.id=discount_listing.discount_item_id and receipt.id=discount_listing.receipt_id and receipt.check_time>beginDate and receipt.check_time<endDateEnd;
+
+  # Get oloSales and oloCount
+  SELECT count(*), (sum(net_sale)+sum(sales_tax)) INTO oloCount, oloSales
+  FROM receipt 
+  WHERE receipt.check_time>beginDate and check_time<endDateEnd and order_type='online';
+
+  # Get current labor dollars from time clock
+  SELECT sum(total) INTO laborTotal 
+  FROM AskTimeClock
+  WHERE clock_in>beginDate and clock_out<endDateEnd;
+
+  # Defaults for return values if any are NULL
+  IF netSales IS NULL THEN
+    SET netSales = '0.00';
+  END IF;
+
+  IF salesCount IS NULL THEN
+    SET salesCount = 0;
+  END IF;
+
+  IF discounts IS NULL THEN
+    SET discounts = '0.00';
+  END IF;
+
+  IF oloSales IS NULL THEN
+    SET oloSales = '0.00';
+  END IF;
+
+  IF oloCount IS NULL THEN
+    SET oloCount = 0;
+  END IF;
+
+  IF laborTotal IS NULL THEN
+    SET laborPct = 0;
+  ELSE
+    SET laborPct = (laborTotal/netSales)*100;
+  END IF;
+
+END $$
+DELIMITER ;
+
+call GetSummaryRange('2018-02-18', '2018-02-19', @netSales, @salesCount, @discounts, @oloSales, @oloCount, @laborPct);
+select @netSales, @salesCount, @discounts, @oloSales, @oloCount, @laborPct;
+
+// Procedure GetSummaryRange2
+// A new version of GetSummaryRange
+DROP procedure IF EXISTS GetSummaryRange2;
+DELIMITER $$
+
+CREATE PROCEDURE GetSummaryRange2(IN beginDate DATETIME, IN endDate DATETIME)
+BEGIN
+  # Declare vars
+  DECLARE salesCount INT;
+  DECLARE netSales DECIMAL(15,2);
+  DECLARE laborTotal DECIMAL(15,2);
+  DECLARE laborPct DECIMAL(15,2);
+  DECLARE discounts DECIMAL(15,2);
+  DECLARE oloCount INT;
+  DECLARE oloSales DECIMAL(15,2);
+
+  DECLARE endDateEnd DATETIME;
+
+  # Setup end time. Add 24hrs to endDate.
+  SELECT DATE_ADD(endDate, INTERVAL 1 DAY) INTO endDateEnd;
+
+  # Get netSales and salesCount
+  SELECT count(*), sum(net_sale) INTO salesCount, netSales
+  FROM receipt
+  WHERE receipt.check_time>beginDate and receipt.check_time<endDateEnd;
+
+  # Get discounts
+  SELECT sum(discount_item.price)*-1 INTO discounts
+  FROM discount_item, discount_listing, receipt 
+  WHERE discount_item.id=discount_listing.discount_item_id and receipt.id=discount_listing.receipt_id and receipt.check_time>beginDate and receipt.check_time<endDateEnd;
+
+  # Get oloSales and oloCount
+  SELECT count(*), (sum(net_sale)+sum(sales_tax)) INTO oloCount, oloSales
+  FROM receipt 
+  WHERE receipt.check_time>beginDate and check_time<endDateEnd and order_type='online';
+
+  # Get current labor dollars from time clock
+  SELECT sum(total) INTO laborTotal 
+  FROM AskTimeClock
+  WHERE clock_in>beginDate and clock_out<endDateEnd;
+
+  # Defaults for return values if any are NULL
+  IF netSales IS NULL THEN
+    SET netSales = '0.00';
+  END IF;
+
+  IF salesCount IS NULL THEN
+    SET salesCount = 0;
+  END IF;
+
+  IF discounts IS NULL THEN
+    SET discounts = '0.00';
+  END IF;
+
+  IF oloSales IS NULL THEN
+    SET oloSales = '0.00';
+  END IF;
+
+  IF oloCount IS NULL THEN
+    SET oloCount = 0;
+  END IF;
+
+  IF laborTotal IS NULL THEN
+    SET laborPct = 0;
+  ELSE
+    SET laborPct = (laborTotal/netSales)*100;
+  END IF;
+
+  # Create return table if it doesn't exist
+  CREATE TABLE IF NOT EXISTS GetSummaryRangeReturnTable(
+    net_sales decimal(15,2) NOT NULL,
+    sales_count INT NOT NULL,
+    olo_sales decimal(15,2) NOT NULL,
+    olo_count INT NOT NULL,
+    labor_pct decimal(15,2) NOT NULL,
+    discounts decimal(15,2) NOT NULL
+  );
+
+  # If table exists, clear it
+  TRUNCATE TABLE GetSummaryRangeReturnTable;
+
+  # Insert values into return table
+  INSERT INTO GetSummaryRangeReturnTable(net_sales, sales_count, olo_sales, olo_count, labor_pct, discounts) VALUES(netSales, salesCount, oloSales, oloCount, laborPct, discounts);
+
+  # Select from return table so there's return values
+  SELECT * FROM GetSummaryRangeReturnTable;
+
+END $$
+DELIMITER ;
+
+call GetSummaryRange2('2018-02-18', '2018-02-19')
+
+// Function GetEmplPay
+DROP function IF EXISTS GetEmplPay;
+DELIMITER $$
+
+CREATE FUNCTION GetEmplPay(staffID INT) RETURNS DECIMAL(15,2)
+  DETERMINISTIC
+BEGIN
+  DECLARE pay_rate DECIMAL(15,2);
+
+  SELECT c.pay_rate INTO pay_rate
+  FROM pay_rate_hist p 
+  JOIN(
+    SELECT ps.staff_id, max(ps.entry_date) as entry_date
+    FROM pay_rate_hist ps
+    GROUP BY ps.staff_id
+  ) a ON (a.staff_id=p.staff_id AND a.entry_date=p.entry_date)
+  JOIN(
+    SELECT pr.id AS pr_id, pr.reg_rate AS pay_rate
+    FROM pay_rate pr
+  ) c ON (c.pr_id=p.pay_rate_id AND a.staff_id=staffID);
+
+  RETURN(pay_rate);
+END $$
+DELIMITER ;
+
+// Can't get it to return value to calling procedure!
+// Function GetPayRateID
+DROP function IF EXISTS GetPayRateID;
+DELIMITER $$
+
+CREATE FUNCTION GetPayRateID(regRate DECIMAL(15,2), otRate DECIMAL(15,2)) RETURNS INT
+  DETERMINISTIC
+BEGIN
+  DECLARE pay_rate_id INT;
+
+  # Get pay rate id. 
+  SELECT pay_rate.id INTO pay_rate_id
+  FROM pay_rate
+  WHERE pay_rate.reg_rate=regRate AND
+        pay_rate.ot_rate=otRate; 
+
+  # If it doesn't exist, INSERT new pay rate.
+  IF pay_rate_id IS NULL THEN
+    INSERT INTO pay_rate(reg_rate, ot_rate) VALUES(regRate, otRate);
+    SELECT last_insert_id() INTO pay_rate_id;
+  END IF;
+
+  RETURN(pay_rate_id);
+END $$
+DELIMITER ;
+
+// Procedure GetPayRateID
+DROP procedure IF EXISTS GetPayRateID;
+DELIMITER $$
+
+CREATE PROCEDURE GetPayRateID(IN regRate DECIMAL(15,2), IN otRate DECIMAL(15,2), OUT pay_rate_id INT)
+  DETERMINISTIC
+BEGIN
+
+  # Get pay rate id. 
+  SELECT pay_rate.id INTO pay_rate_id
+  FROM pay_rate
+  WHERE pay_rate.reg_rate=regRate AND
+        pay_rate.ot_rate=otRate; 
+
+  # If it doesn't exist, INSERT new pay rate.
+  IF pay_rate_id IS NULL THEN
+    INSERT INTO pay_rate(reg_rate, ot_rate) VALUES(regRate, otRate);
+    SELECT last_insert_id() INTO pay_rate_id;
+  END IF;
+
+END $$
+DELIMITER ;
+
+// Procedure UpdateStaff
+DROP procedure IF EXISTS UpdateStaff;
+DELIMITER $$
+
+CREATE PROCEDURE UpdateStaff(IN emplID INT, IN firstName VARCHAR(50), IN lastName VARCHAR(50), IN workStatus VARCHAR(25), IN regRate DECIMAL(15,2), IN otRate DECIMAL(15,2))
+  DETERMINISTIC
+this_proc:BEGIN
+  DECLARE db_id INT;
+  DECLARE db_empl_id INT;
+  DECLARE db_active BOOLEAN;
+  DECLARE db_reg_rate DECIMAL(15,2);
+  DECLARE db_ot_rate DECIMAL(15,2);
+
+  DECLARE db_curr_pay_rate_id INT;
+  DECLARE db_found_pay_rate_id INT;
+  DECLARE work_status BOOLEAN DEFAULT TRUE;
+
+  # Does staff member exist?
+  SELECT staff.id INTO db_id 
+  FROM staff
+  WHERE staff.empl_id=emplID;
+
+    # If not and staff member is "Current Employee", employee is new. Insert.
+    # Otherwise, ignore old "Inactive" employee. EXIT.
+    IF db_id IS NULL THEN
+      IF workStatus = 'Current Employee' THEN
+        INSERT INTO staff(first_name, last_name, empl_id) VALUES(firstName, lastName, emplID);
+      ELSE
+        LEAVE this_proc;
+      END IF;
+    END IF;
+
+
+    # Get staff member's info in order to check for changes.
+    SELECT staff.id, staff.empl_id, staff.active, CurrPay.reg_rate, CurrPay.ot_rate
+    INTO db_id, db_empl_id, db_active, db_reg_rate, db_ot_rate 
+    FROM staff LEFT JOIN CurrPay
+    ON staff.id=CurrPay.staff_id
+    WHERE  staff.empl_id=emplID;
+
+select 'Staff vals: ', db_id, db_empl_id, db_active, db_reg_rate, db_ot_rate;
+
+    # Has the staff member's pay rate changed?
+    # Get pay rate id for staff member
+    SELECT c.pr_id INTO db_curr_pay_rate_id
+    FROM CurrPay c, staff s
+    WHERE c.staff_id=s.id AND 
+          s.empl_id=emplID; 
+
+    # Find the pay rate id from the DB for passed-in pay rates
+#    SELECT GetPayRateID(regRate, otRate) INTO db_found_pay_rate_id;
+    CALL GetPayRateID(regRate, otRate, @db_found_pay_rate_id);
+    SELECT @db_found_pay_rate_id INTO db_found_pay_rate_id;
+
+    # If different, update staff member's pay rate
+    # Use null-safe equality. New employees will have a null pay rate id and breaks shit otherwise.
+    IF !(db_curr_pay_rate_id <=> db_found_pay_rate_id) THEN
+      INSERT INTO pay_rate_hist(staff_id, pay_rate_id) VALUES(db_id, db_found_pay_rate_id);
+    END IF;
+
+    # Has the staff member's status changed?
+    # Check passed-in work status.
+    IF workStatus = 'Inactive' THEN
+      SET work_status = FALSE;
+    END IF;
+    
+    IF db_active != work_status THEN
+      UPDATE staff
+      SET active=work_status 
+      WHERE id=db_id;
+    END IF;
+
+END $$
+DELIMITER ;
+
+call UpdateStaff(1003, 'Patrick', 'Abbot', 'Inactive', 10.00, 15.00);
+call UpdateStaff(1008, 'Nate', 'Brun', 'Current Employee', 11.00, 16.50);
+call UpdateStaff(1008, 'Nate', 'Brun', 'Current Employee', 11.50, 17.25);
+call UpdateStaff(1006, 'Ryan', 'Todd', 'Current Employee', 11.50, 17.25);
+call UpdateStaff(1015, 'Robert', 'Muscarella', 'Current Employee', 6.75, 10.12);
+
+// Function FindClockInID
+DROP function IF EXISTS FindClockInID;
+DELIMITER $$
+
+CREATE FUNCTION FindClockInID(emplID INT,  clockInTime DATETIME) RETURNS INT
+  DETERMINISTIC
+BEGIN
+  DECLARE time_clock_id INT;
+
+  SELECT id INTO time_clock_id
+  FROM time_clock
+  WHERE staff_id=emplId and clock_in=clockInTime;
+
+  RETURN(time_clock_id);
+END $$
+DELIMITER ;
+
+SELECT FindClockInID(4, '2019-07-15 10:52:00')
+
+
+
+// Procedure StaffClockIn
+DROP procedure IF EXISTS StaffClockIn;
+DELIMITER $$
+
+CREATE PROCEDURE StaffClockIn(IN emplID INT, clockInTime DATETIME)
+  DETERMINISTIC
+BEGIN
+  DECLARE db_id INT;
+  DECLARE db_time_clock_id INT;
+
+  # Get staff member ID
+  SELECT staff.id INTO db_id 
+  FROM staff
+  WHERE staff.empl_id=emplID;
+
+  # Check to see if staff member has already clocked in with same clock in time. Can't have dups
+  SELECT FindClockInID(db_id, clockInTime) INTO db_time_clock_id;
+#  SELECT id INTO db_time_clock_id
+#  FROM StaffClockedIn
+#  WHERE staff_id=db_id;
+#  SELECT id INTO db_time_clock_id
+# FROM time_clock
+#  WHERE staff_id=db_id AND
+#        clock_in=clockInTime;
+
+  # Insert clock in entry into Time Clock if no existing clock in
+  IF db_time_clock_id IS NULL THEN
+    INSERT INTO time_clock(staff_id, clock_in) VALUES(db_id, clockInTime);
+  END IF;
+
+END $$
+DELIMITER ;
+
+call StaffClockIn(1002, '2018-02-14 11:00');
+
+// Procedure StaffClockOut
+DROP procedure IF EXISTS StaffClockOut;
+DELIMITER $$
+
+CREATE PROCEDURE StaffClockOut(IN emplID INT, clockOutTime DATETIME)
+  DETERMINISTIC
+BEGIN
+  DECLARE db_id INT;
+  DECLARE db_time_clock_id INT;
+
+  # Get staff member ID
+  SELECT staff.id INTO db_id 
+  FROM staff
+  WHERE staff.empl_id=emplID;
+
+  # Get staff member current clock in time clock entry.
+  SELECT id INTO db_time_clock_id
+  FROM StaffClockedIn
+  WHERE staff_id=db_id;
+
+  # UPDATE clock in entry in Time Clock and add clock out time.
+  UPDATE time_clock SET clock_out=clockOutTime WHERE id=db_time_clock_id;
+
+END $$
+DELIMITER ;
+
+call StaffClockOut(1002, '2018-02-14 16:05');
+
+// Procedure StaffUpdateClockIn for not yet clocked out
+DROP procedure IF EXISTS StaffUpdateClockIn;
+DELIMITER $$
+
+CREATE PROCEDURE StaffUpdateClockIn(IN emplID INT, clockUpdateTime DATETIME)
+  DETERMINISTIC
+BEGIN
+  DECLARE db_id INT;
+  DECLARE db_time_clock_id INT;
+
+  # Get staff member ID
+  SELECT staff.id INTO db_id 
+  FROM staff
+  WHERE staff.empl_id=emplID;
+
+  # Get staff member current clock in time clock entry. They're still clocked in.
+  SELECT id INTO db_time_clock_id
+  FROM StaffClockedIn
+  WHERE staff_id=db_id;
+
+  # UPDATE clock in entry in Time Clock to new clock in time.
+  UPDATE time_clock SET clock_in=clockUpdateTime WHERE id=db_time_clock_id;
+
+END $$
+DELIMITER ;
+
+call StaffUpdateClockIn(1021, '2018-09-01 11:07');
+call StaffUpdateClockIn(1021, '2018-09-01 11:00');
+
+// Procedure StaffUpdateClockIn2 for already clocked out
+DROP procedure IF EXISTS StaffUpdateClockIn2;
+DELIMITER $$
+
+CREATE PROCEDURE StaffUpdateClockIn2(IN emplID INT, clockUpdateTime DATETIME)
+  DETERMINISTIC
+BEGIN
+  DECLARE db_id INT;
+  DECLARE db_time_clock_id INT;
+
+  # Get staff member ID
+  SELECT staff.id INTO db_id 
+  FROM staff
+  WHERE staff.empl_id=emplID;
+
+  # Get staff member current latest entry in time clock because they're already clocked out.
+  SELECT id INTO db_time_clock_id
+  FROM StaffLastShift
+  WHERE staff_id=db_id;
+
+  # UPDATE clock in entry in Time Clock to new clock in time.
+  UPDATE time_clock SET clock_in=clockUpdateTime WHERE id=db_time_clock_id;
+
+END $$
+DELIMITER ;
+
+call StaffUpdateClockIn2(1021, '2018-09-01 11:07');
+call StaffUpdateClockIn2(1021, '2018-09-01 11:00');
+
+// Procedure StaffUpdateClockInOut
+// This takes care of updates to clock ins while still clocked in, clock outs, 
+// and updates to both clock in and clock out times after already clocked out.
+DROP procedure IF EXISTS StaffUpdateClockInOut;
+DELIMITER $$
+
+CREATE PROCEDURE StaffUpdateClockInOut(IN emplID INT, clockInTime DATETIME, clockOutTime DATETIME)
+  DETERMINISTIC
+BEGIN
+  DECLARE db_id INT;
+  DECLARE db_time_clock_id INT;
+
+  # Get staff member ID
+  SELECT staff.id INTO db_id 
+  FROM staff
+  WHERE staff.empl_id=emplID;
+
+  # If clockOutTime is null, it's an update to the clock in time only.
+  IF clockOutTime IS NULL THEN
+    #SELECT 'clockOutTime is NULL';
+    # Get staff member current clock in time clock entry.
+    SELECT id INTO db_time_clock_id
+    FROM StaffClockedIn
+    WHERE staff_id=db_id;
+
+    # Make sure staff member is clocked in. If not, probably a dupe and just exit.
+    IF db_time_clock_id IS NOT NULL THEN
+      # UPDATE clock in time in clock in entry in Time Clock.
+      UPDATE time_clock SET clock_in=clockInTime WHERE id=db_time_clock_id;
+    END IF;
+
+  # Otherwise, this may be a clock out, an update to the clock in time after clock out, 
+  # an update to the clock out time, or an update to both.
+  ELSE
+    #SELECT clockOutTime;
+    # Is staff member currently clock in?
+    SELECT id INTO db_time_clock_id
+    FROM StaffClockedIn
+    WHERE staff_id=db_id;
+
+    IF db_time_clock_id IS NOT NULL THEN
+      # Staff member is clocked in.
+      # UPDATE clock in entry in Time Clock and add clock out time.
+      UPDATE time_clock SET clock_out=clockOutTime WHERE id=db_time_clock_id;
+
+    ELSE
+      # Staff member has already clocked out. Get most recent clock in / clock out entry
+      # and update both times just in case either one has changed.
+
+      # Get staff member current latest entry in time clock because they're already clocked out.
+      SELECT id INTO db_time_clock_id
+      FROM StaffLastShift
+      WHERE staff_id=db_id;
+
+      # UPDATE clock in entry in Time Clock to clock in time and clock out time passed into procedure.
+      UPDATE time_clock SET clock_in=clockInTime, clock_out=clockOutTime WHERE id=db_time_clock_id;
+    END IF;
+  END IF;
+
+END $$
+DELIMITER ;
+
+call StaffClockIn(1002, '2019-07-21 08:00:00')
+call StaffUpdateClockInOut(1002, '2019-07-21 08:57:00', NULL)
+call StaffUpdateClockInOut(1002, '2019-07-21 08:57:00', '2019-07-21 09:00:00')
+call StaffUpdateClockInOut(1002, '2019-07-21 10:57:00', '2019-07-21 11:00:00' )
+call StaffUpdateClockInOut(1002, '2019-07-21 10:57:00', NULL)
+
+// Procedure HourlySummary
+DROP procedure IF EXISTS HourlySummakjry;
+DELIMITER $$
+
+CREATE PROCEDURE HourlySummary(IN checkTimeStart DATETIME, IN checkTimeEnd DATETIME)
+BEGIN
+  SELECT hour(check_time) AS hour, count(*) AS orders, sum(net_sale) AS sales 
+  FROM receipt 
+  WHERE check_time>checkTimeStart AND check_time<checkTimeEnd 
+  GROUP BY hour(check_time);
+
+END $$
+DELIMITER ;
+
+call HourlySummary('2019-06-01 00:00:00', '2019-06-01 23:59:00');
+
+// Procedure WhosWorkingSummary
+DROP procedure IF EXISTS WhosWorkingSummary;
+DELIMITER $$
+
+CREATE PROCEDURE WhosWorkingSummary(IN clockTimeStart DATETIME, IN clockTimeEnd DATETIME)
+BEGIN
+  SELECT * 
+  FROM WhoWorked 
+  WHERE clock_in>clockTimeStart AND clock_in<clockTimeEnd;
+
+END $$
+DELIMITER ;
+
+call WhosWorkingSummary('2019-06-01 00:00:00', '2019-06-01 23:59:00');
+
+
+// Procedure DiscountSummary
+DROP procedure IF EXISTS DiscountSummary;
+DELIMITER $$
+
+CREATE PROCEDURE DiscountSummary(IN checkTimeStart DATETIME, IN checkTimeEnd DATETIME)
+BEGIN
+  SELECT discount_item.name, count(*) AS number, sum(discount_item.price)*-1 AS total 
+  FROM discount_item, discount_listing, receipt 
+  WHERE discount_item.id=discount_listing.discount_item_id AND receipt.id=discount_listing.receipt_id AND receipt.check_time>checkTimeStart AND receipt.check_time<checkTimeEnd
+  GROUP BY discount_item.name;
+
+END $$
+DELIMITER ;
+
+call DiscountSummary('2019-06-01 00:00:00', '2019-06-01 23:59:00');
+
+// Procedure RollCountSummary
+DROP procedure IF EXISTS RollCountSummary;
+DELIMITER $$
+
+CREATE PROCEDURE RollCountSummary(IN checkTimeStart DATETIME, IN checkTimeEnd DATETIME)
+BEGIN
+  SELECT (CASE WHEN order_item.name REGEXP '(LG|KG)' THEN 'LG' WHEN order_item.name REGEXP '(HALF|KID)' THEN 'HALF' END) as roll, SUM(order_listing.order_item_quantity) as count 
+  FROM order_listing, order_item, receipt 
+  WHERE order_listing.order_item_id=order_item.id AND order_listing.receipt_id=receipt.id AND receipt.check_time>checkTimeStart AND receipt.check_time<checkTimeEnd AND order_item.name REGEXP '^(LG|KG|HALF|KID).*(CHZ|HOAG|MOTOWN|SOUTH|PIZ|CHILI|PAT|WEST|JOE|GIL|SIZZLIN|PIG)+.*$' AND order_item.name NOT REGEXP '(TWIST|FF)' 
+  GROUP BY roll;
+
+END $$
+DELIMITER ;
+
+call RollCountSummary('2019-06-01 00:00:00', '2019-06-01 23:59:00');
+
+// Procedure SandSizeSummary
+DROP procedure IF EXISTS SandSizeSummary;
+DELIMITER $$
+
+CREATE PROCEDURE SandSizeSummary(IN checkTimeStart DATETIME, IN checkTimeEnd DATETIME)
+BEGIN
+  SELECT (CASE WHEN order_item.name REGEXP 'LG' THEN 'LG' WHEN order_item.name REGEXP 'KG' THEN 'KG' WHEN order_item.name REGEXP 'HALF' THEN 'HALF' WHEN order_item.name REGEXP 'KID' THEN 'KID' END) as sandwich, SUM(order_listing.order_item_quantity) as count 
+  FROM order_listing, order_item, receipt 
+  WHERE order_listing.order_item_id=order_item.id AND order_listing.receipt_id=receipt.id AND receipt.check_time>checkTimeStart AND receipt.check_time<checkTimeEnd AND order_item.name REGEXP '^(LG|KG|HALF|KID).*(CHZ|HOAG|MOTOWN|SOUTH|PIZ|CHILI|PAT|WEST|JOE|GIL|SIZZLIN|PIG)+.*$' AND order_item.name NOT REGEXP '(TWIST|FF)' 
+  GROUP BY sandwich;
+
+END $$
+DELIMITER ;
+
+call SandSizeSummary('2019-06-01 00:00:00', '2019-06-01 23:59:00');
+
+// Procedure CheckInfoAll
+DROP procedure IF EXISTS CheckInfoAll;
+DELIMITER $$
+
+CREATE PROCEDURE CheckInfoAll(IN checkTimeStart DATETIME, IN checkTimeEnd DATETIME)
+BEGIN
+  SELECT id, check_num, check_time, cust_name, net_sale, sales_tax, (net_sale+sales_tax) total, order_type 
+  FROM receipt 
+  WHERE check_time>=checkTimeStart AND check_time<=checkTimeEnd
+  ORDER BY check_num;
+
+END $$
+DELIMITER ;
+
+call CheckInfoAll('2019-06-01 11:00', '2019-06-01 11:59:00');
+

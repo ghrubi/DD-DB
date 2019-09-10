@@ -1,0 +1,229 @@
+DROP TABLE discount_listing;
+DROP TABLE order_listing;
+DROP TABLE discount_item;
+DROP TABLE order_item;
+DROP TABLE receipt;
+CREATE TABLE receipt(
+  id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  check_num INT NOT NULL,
+  check_time DATETIME NOT NULL,
+  cust_name VARCHAR(25) NOT NULL,
+  net_sale decimal(15,2) NOT NULL,
+  sales_tax decimal(15,2) NOT NULL,
+  order_type VARCHAR(25) NOT NULL,
+  pay_type VARCHAR(25) NOT NULL,
+
+  UNIQUE KEY (check_num, check_time)
+);
+
+//DESCRIBE receipt;
+// Clear table
+//TRUNCATE TABLE receipt;
+
+DROP TABLE order_item;
+CREATE TABLE order_item(
+  id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(50) NOT NULL,
+  price decimal(15,2) NOT NULL,
+
+  UNIQUE KEY (name, price)
+);
+
+DROP TABLE discount_item;
+CREATE TABLE discount_item(
+  id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(50) NOT NULL,
+  price decimal(15,2) NOT NULL,
+
+  UNIQUE KEY (name, price)
+);
+
+DROP TABLE order_listing;
+CREATE TABLE order_listing(
+  id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  receipt_id INT,
+  order_item_id INT,
+  order_item_quantity INT,
+
+  CONSTRAINT fk_receipt FOREIGN KEY (receipt_id)
+    REFERENCES receipt(id)
+    ON UPDATE CASCADE
+    ON DELETE CASCADE,
+
+  CONSTRAINT fk_order_item_id FOREIGN KEY (order_item_id)
+    REFERENCES order_item(id)
+    ON UPDATE CASCADE
+    ON DELETE CASCADE
+);
+
+DROP TABLE discount_listing;
+CREATE TABLE discount_listing(
+  id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  receipt_id INT,
+  discount_item_id INT,
+  discount_item_quantity INT,
+
+  CONSTRAINT fk_receipt_id FOREIGN KEY (receipt_id)
+    REFERENCES receipt(id)
+    ON UPDATE CASCADE
+    ON DELETE CASCADE,
+
+  CONSTRAINT fk_discount_item_id FOREIGN KEY (discount_item_id)
+    REFERENCES discount_item(id)
+    ON UPDATE CASCADE
+    ON DELETE CASCADE
+);
+
+DROP TABLE staff;
+CREATE TABLE staff(
+  id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  first_name VARCHAR(50) NOT NULL,
+  last_name VARCHAR(50) NOT NULL,
+  empl_id INT NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+
+  UNIQUE KEY (empl_id)
+);
+
+INSERT INTO staff(first_name, last_name, empl_id) VALUES('Gene', 'Hrubi', 1001);  
+INSERT INTO staff(first_name, last_name, empl_id) VALUES('Christina', 'Kawa', 1099);  
+INSERT INTO staff(first_name, last_name, empl_id) VALUES('Eric', 'Brun', 1005);  
+INSERT INTO staff(first_name, last_name, empl_id) VALUES('Brett', 'Todd', 1002); 
+INSERT INTO staff(first_name, last_name, empl_id) VALUES('Nate', 'Brun', 1008);
+
+DROP TABLE pay_rate;
+CREATE TABLE pay_rate(
+  id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  reg_rate DECIMAL(15,2) NOT NULL,
+  ot_rate DECIMAL(15,2) NOT NULL
+);
+
+INSERT INTO pay_rate(reg_rate, ot_rate) VALUES(10.50, 15.75);
+INSERT INTO pay_rate(reg_rate, ot_rate) VALUES(11.00, 16.50);
+
+DROP TABLE pay_rate_hist;
+CREATE TABLE pay_rate_hist(
+  id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  entry_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  staff_id INT NOT NULL,
+  pay_rate_id INT NOT NULL,
+
+  CONSTRAINT fk_staff_id FOREIGN KEY (staff_id)
+    REFERENCES staff(id)
+    ON UPDATE CASCADE
+    ON DELETE CASCADE,
+
+  CONSTRAINT fk_pay_rate_id FOREIGN KEY (pay_rate_id)
+    REFERENCES pay_rate(id)
+    ON UPDATE CASCADE
+    ON DELETE CASCADE
+);
+
+INSERT INTO pay_rate_hist(staff_id, pay_rate_id) VALUES(1, 2);
+INSERT INTO pay_rate_hist(staff_id, pay_rate_id) VALUES(2, 1);
+INSERT INTO pay_rate_hist(staff_id, pay_rate_id) VALUES(3, 1);
+
+INSERT INTO pay_rate_hist(staff_id, pay_rate_id) VALUES(2, 2);
+INSERT INTO pay_rate_hist(staff_id, pay_rate_id) VALUES(3, 2);
+INSERT INTO pay_rate_hist(staff_id, pay_rate_id) VALUES(4, 1);
+
+DROP TABLE time_clock;
+CREATE TABLE time_clock(
+  id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  staff_id INT NOT NULL,
+  clock_in DATETIME NOT NULL,
+  clock_out DATETIME
+);
+
+INSERT INTO time_clock(staff_id, clock_in, clock_out) VALUES(1, '2018-02-13 11:00', '2018-02-13 16:00');
+INSERT INTO time_clock(staff_id, clock_in, clock_out) VALUES(2, '2018-02-13 11:00', '2018-02-13 15:00');
+INSERT INTO time_clock(staff_id, clock_in) VALUES(2, '2018-02-14 11:05');
+INSERT INTO time_clock(staff_id, clock_in, clock_out) VALUES(3, '2018-02-14 10:55', '2018-02-14 14:01');
+
+DROP VIEW CurrPayRate;
+CREATE VIEW CurrPayRate AS
+  SELECT ps.staff_id, max(ps.entry_date) as entry_date
+  FROM pay_rate_hist ps
+  GROUP BY ps.staff_id;
+
+DROP VIEW CurrPay;
+CREATE VIEW CurrPay AS
+SELECT p.id, p.entry_date, p.staff_id, pr.id AS pr_id, pr.reg_rate, pr.ot_rate
+FROM pay_rate_hist p, CurrPayRate c, pay_rate pr
+WHERE c.staff_id=p.staff_id AND 
+      c.entry_date=p.entry_date AND
+      pr.id=p.pay_rate_id;
+
+DROP VIEW AskTimeClock;
+CREATE VIEW AskTimeClock AS
+SELECT t.id, t.staff_id, t.clock_in, IFNULL(t.clock_out, NOW()) AS clock_out,
+       timestampdiff(MINUTE, t.clock_in, IFNULL(t.clock_out, NOW()))/60 AS hours,
+       (timestampdiff(MINUTE, t.clock_in, IFNULL(t.clock_out, NOW()))/60)*c.reg_rate AS total
+FROM time_clock t, CurrPay c
+WHERE t.staff_id=c.staff_id;
+
+DROP VIEW StaffLastShift;
+CREATE VIEW StaffLastShift AS
+SELECT max(id) as id, staff_id, max(clock_in) AS clock_in
+FROM time_clock
+WHERE clock_out IS NOT NULL
+GROUP BY staff_id;
+
+DROP VIEW StaffClockedIn;
+CREATE VIEW StaffClockedIn AS
+SELECT id, staff_id, max(clock_in) AS clock_in
+FROM time_clock
+WHERE clock_out IS NULL
+GROUP BY staff_id;
+
+DROP VIEW WhosClockedIn;
+CREATE VIEW WhosClockedIn AS
+SELECT CONCAT(first_name, ' ', last_name) AS name, clock_in 
+FROM staff, StaffClockedIn 
+WHERE staff.id=StaffClockedIn.staff_id;
+
+DROP VIEW WhosWorkingToday;
+CREATE VIEW WhosWorkingToday AS
+SELECT CONCAT(s.first_name, ' ', s.last_name) AS name, a.clock_in, a.clock_out, a.hours, a.total
+FROM staff s, AskTimeClock a
+WHERE s.id=a.staff_id AND
+      a.clock_in>curdate();
+
+DROP VIEW WhoWorked;
+CREATE VIEW WhoWorked AS
+SELECT CONCAT(s.first_name, ' ', s.last_name) AS name, a.clock_in, IF(a.clock_out=NOW(), NULL, a.clock_out) AS clock_out, a.hours, a.total
+FROM staff s, AskTimeClock a
+WHERE s.id=a.staff_id;
+
+DROP VIEW OrderDetailItems;
+CREATE VIEW OrderDetailItems AS
+SELECT receipt.id as check_id, receipt.check_num,receipt.check_time, receipt.cust_name, order_listing.id AS item_id, IFNULL(order_listing.order_item_quantity, 1) AS quantity, order_item.name AS item, (IFNULL(order_listing.order_item_quantity, 1) * order_item.price) AS price
+FROM order_listing, order_item, receipt
+WHERE order_listing.order_item_id=order_item.id AND
+      order_listing.receipt_id=receipt.id
+ORDER BY check_num, order_listing.id;
+
+DROP VIEW OrderDetailDiscounts;
+CREATE VIEW OrderDetailDiscounts AS
+SELECT receipt.id as check_id, receipt.check_num,receipt.check_time, receipt.cust_name, discount_listing.id AS item_id, IFNULL(discount_listing.discount_item_quantity, 1) AS quantity, discount_item.name AS item, (IFNULL(discount_listing.discount_item_quantity, 1) * discount_item.price) AS price
+FROM discount_listing, discount_item, receipt
+WHERE discount_listing.discount_item_id=discount_item.id AND
+      discount_listing.receipt_id=receipt.id
+ORDER BY check_num, discount_listing.id;
+
+DROP VIEW OrderDetailDiscounts;
+CREATE VIEW OrderDetailDiscounts AS
+SELECT receipt.id as check_id, receipt.check_num,receipt.check_time, receipt.cust_name, discount_listing.id AS item_id, discount_item.name AS item, discount_item.price AS price
+FROM discount_listing, discount_item, receipt
+WHERE discount_listing.discount_item_id=discount_item.id AND
+      discount_listing.receipt_id=receipt.id
+ORDER BY check_num, discount_listing.id;
+
+DROP VIEW OrderDetail;
+CREATE VIEW OrderDetail AS
+SELECT *
+FROM OrderDetailItems
+UNION ALL
+SELECT *
+FROM OrderDetailDiscounts;
+
